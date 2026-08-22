@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     'apps.accounts',
     'apps.students',
     'apps.teaching',
@@ -74,6 +74,10 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'school_attendance_system.wsgi.application'
+
+# Custom user model
+# https://docs.djangoproject.com/en/6.1/topics/auth/customizing/#substituting-a-custom-user-model
+AUTH_USER_MODEL = 'accounts.User'
 
 
 # Database
