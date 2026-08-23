@@ -6,14 +6,18 @@ class User(AbstractUser):
     """
     Custom user model for the school attendance system.
 
-    Extends Django's AbstractUser to add a role field that distinguishes
-    between the three main actor types in the system.
+    The two system-login roles are Administrator and Teacher.
+
+    Class Parent is NOT a separate User role; it is a responsibility
+    assigned to a Teacher via ClassParentAssignment in the teaching app.
+
+    Guardian (a student's biological/legal parent or guardian) is a domain
+    entity in the students app and does NOT have a system login role.
     """
 
     class Role(models.TextChoices):
         ADMINISTRATOR = 'administrator', 'Administrator'
         TEACHER = 'teacher', 'Teacher'
-        PARENT = 'parent', 'Parent/Guardian'
 
     # AbstractUser already provides: username, password, first_name, last_name,
     # email, is_active, is_staff, is_superuser, date_joined, last_login.
@@ -52,7 +56,3 @@ class User(AbstractUser):
     @property
     def is_teacher(self):
         return self.role == self.Role.TEACHER
-
-    @property
-    def is_parent(self):
-        return self.role == self.Role.PARENT
