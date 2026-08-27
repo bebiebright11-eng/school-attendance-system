@@ -1,83 +1,90 @@
-from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 
 class AttendanceSession(models.Model):
     """
-    Represents a single attendance-taking event.
+    Represents a single attendance-taking event for a class/stream.
 
-    An AttendanceSession is linked to a Lesson (which carries all the
-    context: teacher, subject, class/stream, term, year). The session
-    records exactly when attendance was taken and by whom.
-
+    An AttendanceSession carries all the context needed: which class,
+    which stream, which teacher, which academic year, and on what date.
     AttendanceRecords belong to an AttendanceSession.
     """
 
-    lesson = models.ForeignKey(
-        'teaching.Lesson',
+    class SessionType(models.TextChoices):
+        MORNING = 'morning', 'Morning'
+        AFTERNOON = 'afternoon', 'Afternoon'
+        FULL_DAY = 'full_day', 'Full Day'
+
+    school_class = models.ForeignKey(
+        'administration.Class',
         on_delete=models.PROTECT,
         related_name='attendance_sessions',
-        help_text='The scheduled lesson this attendance session corresponds to.',
+        help_text='The class this attendance session is for.',
+    )
+    stream = models.ForeignKey(
+        'administration.Stream',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='attendance_sessions',
+        help_text='The stream within the class, if applicable.',
+    )
+    teacher = models.ForeignKey(
+        'teaching.Teacher',
+        on_delete=models.PROTECT,
+        related_name='attendance_sessions',
+        help_text='The teacher who conducted this attendance session.',
+    )
+    academic_year = models.ForeignKey(
+        'administration.AcademicYear',
+        on_delete=models.PROTECT,
+        related_name='attendance_sessions',
+        help_text='The academic year this session belongs to.',
     )
     date = models.DateField(
         help_text='Calendar date on which this attendance session occurred.',
     )
-    taken_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name='attendance_sessions_taken',
-        help_text='The user who recorded this attendance session.',
+    session_type = models.CharField(
+        max_length=15,
+        choices=SessionType,
+        default=SessionType.MORNING,
+        help_text='Type of attendance session.',
     )
-    taken_at = models.DateTimeField(
+    created_at = models.DateTimeField(
         default=timezone.now,
-        help_text='Timestamp when attendance was first recorded.',
-    )
-    notes = models.TextField(
-        blank=True,
-        default='',
-        help_text='Optional session-level notes.',
+        help_text='Timestamp when this session record was created.',
     )
 
     class Meta:
         verbose_name = 'Attendance Session'
         verbose_name_plural = 'Attendance Sessions'
-        ordering = ['-date', 'lesson']
+        ordering = ['-date', 'school_class', 'stream']
         constraints = [
             models.UniqueConstraint(
-                fields=['lesson', 'date'],
-                name='unique_attendance_session_per_lesson_date',
+                fields=['school_class', 'stream', 'date', 'session_type'],
+                name='unique_attendance_session_per_class_stream_date_type',
             ),
         ]
 
     def __str__(self):
-        return f'{self.lesson} — {self.date}'
+        stream_label = f' {self.stream}' if self.stream else ''
+        return f'{self.school_class}{stream_label} — {self.date} ({self.get_session_type_display()})'
 
 
 class AttendanceRecord(models.Model):
     """
     Records the attendance status of one student for one AttendanceSession.
 
-    Status choices are explicit and documented. A record must exist for
-    every student in the session — absence is a recorded fact, not the
-    absence of a record.
-
-    Records should not be silently overwritten; use AttendanceCorrection
-    to change a record after the fact.
+    A record must exist for every student in the session — absence is a
+    recorded fact, not the absence of a record.
     """
 
     class Status(models.TextChoices):
         PRESENT = 'present', 'Present'
-        # Student attended and was on time.
-
         ABSENT = 'absent', 'Absent'
-        # Student did not attend and no excuse was provided.
-
         LATE = 'late', 'Late'
-        # Student attended but arrived after the session started.
-
         EXCUSED = 'excused', 'Excused'
-        # Student was absent but with an accepted excuse.
 
     session = models.ForeignKey(
         AttendanceSession,
@@ -101,10 +108,6 @@ class AttendanceRecord(models.Model):
         default='',
         help_text='Optional remarks, e.g. reason for lateness or excuse details.',
     )
-    recorded_at = models.DateTimeField(
-        default=timezone.now,
-        help_text='Timestamp when this record was first created.',
-    )
 
     class Meta:
         verbose_name = 'Attendance Record'
@@ -119,57 +122,3 @@ class AttendanceRecord(models.Model):
 
     def __str__(self):
         return f'{self.student} — {self.session} — {self.get_status_display()}'
-
-
-class AttendanceCorrection(models.Model):
-    """
-    Records an authorised correction to an existing AttendanceRecord.
-
-    Corrections preserve accountability by keeping the original record
-    intact and recording who changed what and why.
-
-    The AttendanceRecord's status is updated to the new value; this
-    correction entry provides the audit trail.
-    """
-
-    record = models.ForeignKey(
-        AttendanceRecord,
-        on_delete=models.CASCADE,
-        related_name='corrections',
-        help_text='The attendance record that was corrected.',
-    )
-    corrected_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name='attendance_corrections',
-        help_text='The authorised user who made this correction.',
-    )
-    previous_status = models.CharField(
-        max_length=10,
-        choices=AttendanceRecord.Status,
-        help_text='The attendance status before the correction.',
-    )
-    new_status = models.CharField(
-        max_length=10,
-        choices=AttendanceRecord.Status,
-        help_text='The attendance status after the correction.',
-    )
-    reason = models.TextField(
-        help_text='Mandatory reason/justification for this correction.',
-    )
-    corrected_at = models.DateTimeField(
-        default=timezone.now,
-        help_text='Timestamp when this correction was made.',
-    )
-
-    class Meta:
-        verbose_name = 'Attendance Correction'
-        verbose_name_plural = 'Attendance Corrections'
-        ordering = ['-corrected_at']
-
-    def __str__(self):
-        return (
-            f'Correction on {self.record} — '
-            f'{self.previous_status} → {self.new_status} '
-            f'by {self.corrected_by}'
-        )

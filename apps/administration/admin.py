@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AcademicYear, Classroom, Class, Department, Stream, Term
+from .models import AcademicYear, Class, Stream, Term
 
 
 @admin.register(AcademicYear)
@@ -13,15 +13,15 @@ class AcademicYearAdmin(admin.ModelAdmin):
 
 @admin.register(Term)
 class TermAdmin(admin.ModelAdmin):
-    list_display = ('name', 'academic_year', 'term_number', 'start_date', 'end_date', 'is_current')
-    list_filter = ('academic_year', 'is_current')
+    list_display = ('name', 'academic_year', 'term_number', 'start_date', 'end_date')
+    list_filter = ('academic_year',)
     search_fields = ('name', 'academic_year__name')
     ordering = ('academic_year', 'term_number')
 
 
 @admin.register(Class)
 class ClassAdmin(admin.ModelAdmin):
-    list_display = ('name', 'level')
+    list_display = ('name', 'level', 'capacity')
     search_fields = ('name',)
     ordering = ('level',)
 
@@ -32,18 +32,3 @@ class StreamAdmin(admin.ModelAdmin):
     list_filter = ('school_class',)
     search_fields = ('name', 'school_class__name')
     ordering = ('school_class', 'name')
-
-
-@admin.register(Classroom)
-class ClassroomAdmin(admin.ModelAdmin):
-    list_display = ('name', 'capacity')
-    search_fields = ('name',)
-    ordering = ('name',)
-
-
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'head')
-    search_fields = ('name',)
-    ordering = ('name',)
-    raw_id_fields = ('head',)
