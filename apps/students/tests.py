@@ -1,13 +1,10 @@
 import datetime
 
-from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
 
-from apps.administration.models import AcademicYear, Class, Stream, Term
-from apps.students.models import Enrollment, Guardian, Student, StudentGuardian
-
-User = get_user_model()
+from apps.administration.models import AcademicYear, Class, Stream
+from apps.students.models import Enrollment, Student
 
 
 def make_student(admission='ADM001', first='Alice', last='Banda', status=Student.Status.ACTIVE):
@@ -15,25 +12,13 @@ def make_student(admission='ADM001', first='Alice', last='Banda', status=Student
         admission_number=admission,
         first_name=first,
         last_name=last,
-        date_of_admission=datetime.date(2026, 1, 10),
         status=status,
     )
-
-
-def make_guardian(first='Grace', last='Banda', phone='0712345678'):
-    return Guardian.objects.create(first_name=first, last_name=last, phone_number=phone)
 
 
 def make_year():
     return AcademicYear.objects.create(
         name='2026', start_date='2026-01-10', end_date='2026-11-20',
-    )
-
-
-def make_term(year):
-    return Term.objects.create(
-        academic_year=year, name='Term 1', term_number=1,
-        start_date='2026-01-10', end_date='2026-03-31',
     )
 
 
@@ -70,86 +55,36 @@ class StudentModelTest(TestCase):
             admission_number='ADM999',
             first_name='Test',
             last_name='Student',
-            date_of_admission=datetime.date(2026, 1, 10),
         )
         self.assertEqual(s.status, Student.Status.ACTIVE)
 
-    def test_student_user_link_is_optional(self):
+    def test_student_has_no_user_field(self):
+        """Students do NOT have system accounts — user field must be absent."""
         s = make_student()
-        self.assertIsNone(s.user)
+        self.assertFalse(hasattr(s, 'user'))
 
-    def test_student_can_be_linked_to_user(self):
-        user = User.objects.create_user(username='alice', email='alice@e.com', password='pass')
+    def test_student_has_no_guardians_field(self):
+        """Guardian entity removed — students have no guardians M2M."""
         s = make_student()
-        s.user = user
-        s.save()
-        self.assertEqual(s.user, user)
-        self.assertEqual(user.student_profile, s)
+        self.assertFalse(hasattr(s, 'guardians'))
+
+    def test_student_has_no_photo_field(self):
+        """Photo field not in approved spec."""
+        s = make_student()
+        self.assertFalse(hasattr(s, 'photo'))
+
+    def test_student_has_no_date_of_admission_field(self):
+        """date_of_admission removed from approved spec."""
+        s = make_student()
+        self.assertFalse(hasattr(s, 'date_of_admission'))
 
     def test_get_full_name(self):
         s = make_student()
         self.assertEqual(s.get_full_name(), 'Alice Banda')
 
-
-class GuardianModelTest(TestCase):
-
-    def test_create_guardian(self):
-        g = make_guardian()
-        self.assertEqual(str(g), 'Grace Banda')
-
-    def test_guardian_user_link_is_optional(self):
-        g = make_guardian()
-        self.assertIsNone(g.user)
-
-    def test_guardian_can_be_linked_to_user(self):
-        user = User.objects.create_user(username='grace', email='grace@e.com', password='pass')
-        g = make_guardian()
-        g.user = user
-        g.save()
-        self.assertEqual(g.user, user)
-
-
-class StudentGuardianTest(TestCase):
-
-    def setUp(self):
-        self.student = make_student()
-        self.guardian = make_guardian()
-
-    def test_create_student_guardian_relationship(self):
-        sg = StudentGuardian.objects.create(
-            student=self.student,
-            guardian=self.guardian,
-            relationship='Mother',
-            is_primary=True,
-        )
-        self.assertEqual(sg.student, self.student)
-        self.assertEqual(sg.guardian, self.guardian)
-        self.assertTrue(sg.is_primary)
-        self.assertIn('Grace Banda', str(sg))
-        self.assertIn('Alice Banda', str(sg))
-
-    def test_duplicate_student_guardian_raises(self):
-        StudentGuardian.objects.create(student=self.student, guardian=self.guardian)
-        with self.assertRaises(IntegrityError):
-            StudentGuardian.objects.create(student=self.student, guardian=self.guardian)
-
-    def test_one_guardian_multiple_students(self):
-        s2 = make_student(admission='ADM002', first='Bob', last='Moyo')
-        sg1 = StudentGuardian.objects.create(student=self.student, guardian=self.guardian)
-        sg2 = StudentGuardian.objects.create(student=s2, guardian=self.guardian)
-        self.assertEqual(self.guardian.student_guardians.count(), 2)
-        self.assertNotEqual(sg1.pk, sg2.pk)
-
-    def test_one_student_multiple_guardians(self):
-        g2 = make_guardian(first='Peter', last='Banda', phone='0799')
-        StudentGuardian.objects.create(student=self.student, guardian=self.guardian)
-        StudentGuardian.objects.create(student=self.student, guardian=g2)
-        self.assertEqual(self.student.student_guardians.count(), 2)
-
-    def test_many_to_many_via_student_guardians(self):
-        StudentGuardian.objects.create(student=self.student, guardian=self.guardian)
-        self.assertIn(self.guardian, self.student.guardians.all())
-        self.assertIn(self.student, self.guardian.students.all())
+    def test_date_of_birth_optional(self):
+        s = make_student()
+        self.assertIsNone(s.date_of_birth)
 
 
 class EnrollmentTest(TestCase):
@@ -157,51 +92,79 @@ class EnrollmentTest(TestCase):
     def setUp(self):
         self.student = make_student()
         self.year = make_year()
-        self.term = make_term(self.year)
         self.klass = make_class()
         self.stream = Stream.objects.create(school_class=self.klass, name='East')
 
-    def _enroll(self, term=None, stream=None):
+    def _enroll(self, stream=None, status=Enrollment.Status.ACTIVE):
         return Enrollment.objects.create(
             student=self.student,
             academic_year=self.year,
-            term=term,
             school_class=self.klass,
             stream=stream,
-            date_enrolled=datetime.date(2026, 1, 10),
+            enrollment_date=datetime.date(2026, 1, 10),
+            status=status,
         )
 
     def test_create_enrollment(self):
-        e = self._enroll(term=self.term, stream=self.stream)
+        e = self._enroll(stream=self.stream)
         self.assertIn('Alice Banda', str(e))
         self.assertIn('Form 1', str(e))
-        self.assertTrue(e.is_active)
-
-    def test_enrollment_term_optional(self):
-        e = self._enroll()
-        self.assertIsNone(e.term)
+        self.assertEqual(e.status, Enrollment.Status.ACTIVE)
 
     def test_enrollment_stream_optional(self):
-        e = self._enroll(term=self.term)
+        e = self._enroll()
         self.assertIsNone(e.stream)
 
-    def test_duplicate_enrollment_raises(self):
-        self._enroll(term=self.term, stream=self.stream)
-        with self.assertRaises(IntegrityError):
-            self._enroll(term=self.term, stream=self.stream)
+    def test_enrollment_has_no_term_field(self):
+        """Term removed from Enrollment per approved spec."""
+        e = self._enroll(stream=self.stream)
+        self.assertFalse(hasattr(e, 'term'))
 
-    def test_same_student_different_term_allowed(self):
-        term2 = Term.objects.create(
-            academic_year=self.year, name='Term 2', term_number=2,
-            start_date='2026-04-01', end_date='2026-06-30',
+    def test_enrollment_has_no_notes_field(self):
+        """Notes removed from Enrollment per approved spec."""
+        e = self._enroll(stream=self.stream)
+        self.assertFalse(hasattr(e, 'notes'))
+
+    def test_enrollment_uses_enrollment_date_not_date_enrolled(self):
+        """Field renamed from date_enrolled to enrollment_date per approved spec."""
+        e = self._enroll(stream=self.stream)
+        self.assertEqual(e.enrollment_date, datetime.date(2026, 1, 10))
+        self.assertFalse(hasattr(e, 'date_enrolled'))
+
+    def test_enrollment_status_choices(self):
+        statuses = [
+            Enrollment.Status.ACTIVE,
+            Enrollment.Status.COMPLETED,
+            Enrollment.Status.WITHDRAWN,
+            Enrollment.Status.TRANSFERRED,
+        ]
+        for i, status in enumerate(statuses):
+            student = make_student(admission=f'ADM{100 + i:03}')
+            e = Enrollment.objects.create(
+                student=student,
+                academic_year=self.year,
+                school_class=self.klass,
+                stream=self.stream,
+                enrollment_date=datetime.date(2026, 1, 10),
+                status=status,
+            )
+            self.assertEqual(e.status, status)
+
+    def test_duplicate_enrollment_raises(self):
+        self._enroll(stream=self.stream)
+        with self.assertRaises(IntegrityError):
+            self._enroll(stream=self.stream)
+
+    def test_same_student_different_year_allowed(self):
+        year2 = AcademicYear.objects.create(
+            name='2025', start_date='2025-01-01', end_date='2025-12-31',
         )
-        e1 = self._enroll(term=self.term, stream=self.stream)
+        e1 = self._enroll(stream=self.stream)
         e2 = Enrollment.objects.create(
             student=self.student,
-            academic_year=self.year,
-            term=term2,
+            academic_year=year2,
             school_class=self.klass,
             stream=self.stream,
-            date_enrolled=datetime.date(2026, 4, 1),
+            enrollment_date=datetime.date(2025, 1, 10),
         )
         self.assertNotEqual(e1.pk, e2.pk)

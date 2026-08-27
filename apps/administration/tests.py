@@ -4,8 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 
-from apps.administration.models import AcademicYear, Class, Classroom, Department, Stream, Term
-from apps.teaching.models import Teacher
+from apps.administration.models import AcademicYear, Class, Stream, Term
 
 
 def make_year(name='2026', start='2026-01-10', end='2026-11-20', is_current=False):
@@ -97,6 +96,14 @@ class TermTest(TestCase):
         with self.assertRaises(ValidationError):
             term.clean()
 
+    def test_term_has_no_is_current_field(self):
+        """Term no longer has is_current — confirm the field is absent."""
+        term = Term.objects.create(
+            academic_year=self.year, name='Term 1', term_number=1,
+            start_date='2026-01-10', end_date='2026-03-31',
+        )
+        self.assertFalse(hasattr(term, 'is_current'))
+
 
 class ClassTest(TestCase):
 
@@ -115,6 +122,19 @@ class ClassTest(TestCase):
         make_class('Form 2', 2)
         names = list(Class.objects.values_list('name', flat=True))
         self.assertEqual(names, ['Form 1', 'Form 2', 'Form 3'])
+
+    def test_capacity_optional(self):
+        c = make_class()
+        self.assertIsNone(c.capacity)
+
+    def test_capacity_can_be_set(self):
+        c = Class.objects.create(name='Form 2', level=2, capacity=45)
+        self.assertEqual(c.capacity, 45)
+
+    def test_class_has_no_description_field(self):
+        """Class no longer has a description field."""
+        c = make_class()
+        self.assertFalse(hasattr(c, 'description'))
 
 
 class StreamTest(TestCase):
@@ -137,48 +157,3 @@ class StreamTest(TestCase):
         s1 = Stream.objects.create(school_class=self.klass, name='East')
         s2 = Stream.objects.create(school_class=klass2, name='East')
         self.assertNotEqual(s1.pk, s2.pk)
-
-
-class ClassroomTest(TestCase):
-
-    def test_create_classroom(self):
-        room = Classroom.objects.create(name='Room 101', capacity=40)
-        self.assertEqual(str(room), 'Room 101')
-
-    def test_name_unique(self):
-        Classroom.objects.create(name='Lab A')
-        with self.assertRaises(IntegrityError):
-            Classroom.objects.create(name='Lab A')
-
-    def test_capacity_optional(self):
-        room = Classroom.objects.create(name='Hall')
-        self.assertIsNone(room.capacity)
-
-
-class DepartmentTest(TestCase):
-
-    def test_create_department_without_head(self):
-        dept = Department.objects.create(name='Mathematics')
-        self.assertEqual(str(dept), 'Mathematics')
-        self.assertIsNone(dept.head)
-
-    def test_name_unique(self):
-        Department.objects.create(name='Sciences')
-        with self.assertRaises(IntegrityError):
-            Department.objects.create(name='Sciences')
-
-    def test_department_head_is_optional(self):
-        teacher = Teacher.objects.create(
-            employee_number='T001', first_name='Ann', last_name='Smith',
-        )
-        dept = Department.objects.create(name='Languages', head=teacher)
-        self.assertEqual(dept.head, teacher)
-
-    def test_deleting_head_sets_null(self):
-        teacher = Teacher.objects.create(
-            employee_number='T002', first_name='Bob', last_name='Jones',
-        )
-        dept = Department.objects.create(name='History', head=teacher)
-        teacher.delete()
-        dept.refresh_from_db()
-        self.assertIsNone(dept.head)
